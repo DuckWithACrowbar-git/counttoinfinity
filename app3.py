@@ -76,9 +76,18 @@ if __name__ == '__main__':
     import eventlet
     import eventlet.wsgi
 
+    # --- HTTP server on port 8080 (no redirect, full site) ---
+    def http_server():
+        eventlet.wsgi.server(
+            eventlet.listen(("0.0.0.0", 8080)),
+            app
+        )
+
+    threading.Thread(target=http_server, daemon=True).start()
+
+    # --- Optional HTTP redirect server on port 80 ---
     if os.path.exists(cert) and os.path.exists(key):
 
-        # --- HTTP redirect server that does NOT break WebSockets ---
         def redirect_app(environ, start_response):
             if environ.get("HTTP_UPGRADE", "").lower() == "websocket":
                 start_response("400 Bad Request", [])
@@ -98,7 +107,7 @@ if __name__ == '__main__':
             daemon=True
         ).start()
 
-        # --- HTTPS WebSocket server ---
+        # --- HTTPS WebSocket server on port 443 ---
         socketio.run(
             app,
             host='0.0.0.0',
@@ -108,4 +117,5 @@ if __name__ == '__main__':
         )
 
     else:
-        socketio.run(app, host='0.0.0.0', port=8000)
+        # If no SSL, run normal HTTP on 8080 only
+        socketio.run(app, host='0.0.0.0', port=8080)
