@@ -7,7 +7,7 @@ import eventlet
 import eventlet.wsgi
 from socketio import Middleware
 
-
+socketio_http = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GIFS_DIR = os.path.join(APP_DIR, 'gifs')
 COUNT_FILE = os.path.join(APP_DIR, 'count.json')
@@ -77,11 +77,16 @@ if __name__ == '__main__':
     cert = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/fullchain.pem'
     key = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/privkey.pem'
 
+    import eventlet
+    import eventlet.wsgi
+    from socketio import Middleware
+
+    # --- SECOND Socket.IO instance for HTTP ---
+    socketio_http = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+
     # --- HTTP + WebSockets on port 8080 ---
     def http_ws_server():
-        # Wrap Flask app so Socket.IO works through eventlet.wsgi
-        wsgi_app = Middleware(socketio, app)
-
+        wsgi_app = Middleware(socketio_http, app)
         eventlet.wsgi.server(
             eventlet.listen(("0.0.0.0", 8080)),
             wsgi_app
@@ -96,7 +101,6 @@ if __name__ == '__main__':
             if environ.get("HTTP_UPGRADE", "").lower() == "websocket":
                 start_response("400 Bad Request", [])
                 return [b"WebSocket not supported on port 80"]
-
             host = environ.get("HTTP_HOST", "").split(":")[0]
             path = environ.get("PATH_INFO", "")
             new_url = f"https://{host}{path}"
@@ -120,14 +124,5 @@ if __name__ == '__main__':
             keyfile=key
         )
 
-        socketio.run(
-            app,
-            host='0.0.0.0',
-            port=8080,
-            certfile=cert,
-            keyfile=key
-        )
-
     else:
-        # If SSL missing, fall back to HTTP only
-        socketio.run(app, host='0.0.0.0', port=8080)
+        socketio_http.run(app, host='0.0.0.0', port=8080)
