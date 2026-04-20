@@ -7,7 +7,7 @@ import eventlet
 import eventlet.wsgi
 from socketio import Middleware
 
-socketio_http = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GIFS_DIR = os.path.join(APP_DIR, 'gifs')
 COUNT_FILE = os.path.join(APP_DIR, 'count.json')
