@@ -9,6 +9,7 @@ from flask_socketio import SocketIO, emit
 from socketio import WSGIApp
 import eventlet.wsgi
 import ssl
+import traceback
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GIFS_DIR = os.path.join(APP_DIR, 'gifs')
@@ -24,7 +25,7 @@ def read_count():
     try:
         with open(COUNT_FILE, 'r') as f:
             return int(json.load(f).get('count', 0))
-    except:
+    except Exception:
         return 0
 
 def write_count(n):
@@ -33,11 +34,34 @@ def write_count(n):
         json.dump({'count': n}, f)
     os.replace(tmp, COUNT_FILE)
 
+def build_digit_gif_map():
+    mapping = {}
+    if not os.path.isdir(GIFS_DIR):
+        return mapping
+    for fn in sorted(os.listdir(GIFS_DIR)):
+        name = fn.lower()
+        if name and name[0].isdigit() and name.endswith(('.gif', '.png', '.jpg', '.jpeg', '.webp')):
+            mapping.setdefault(name[0], fn)
+    return mapping
+
 @app.route('/')
 def index():
     count = read_count()
-    # ... your existing template logic ...
-    return render_template('index.html', count=count)
+    digit_map = build_digit_gif_map()
+    digits = list(str(count)) if count != 0 else ['0']
+    gifs = [digit_map[d] for d in digits if d in digit_map]
+    return render_template('index.html', count=count, gifs=gifs)
+
+@app.route('/gifs/<path:filename>')
+def serve_gif(filename):
+    return send_from_directory(GIFS_DIR, filename)
+
+@app.route('/api/gifs/<int:count>')
+def api_gifs(count):
+    digit_map = build_digit_gif_map()
+    digits = list(str(count)) if count != 0 else ['0']
+    gifs = [digit_map[d] for d in digits if d in digit_map]
+    return jsonify({'gifs': gifs})
 
 @app.route('/increment', methods=['POST'])
 def increment():
@@ -45,8 +69,7 @@ def increment():
         n = read_count() + 1
         write_count(n)
 
-    print(f"[server] incremented to {n} — emitting to clients")
-    # broadcast to all connected clients
+    print(f"[server] increment -> {n}")
     socketio.emit('count_updated', {'count': n}, broadcast=True)
     return ("", 204)
 
@@ -54,6 +77,17 @@ def increment():
 def on_connect():
     print("[server] client connected")
     emit('count_updated', {'count': read_count()})
+
+def validate_cert_paths(cert, key):
+    info = {}
+    for label, p in (("cert", cert), ("key", key)):
+        info[label] = {
+            "value": p,
+            "exists": os.path.exists(p) if p else False,
+            "isfile": os.path.isfile(p) if p else False,
+            "abspath": os.path.abspath(p) if p else None
+        }
+    return info
 
 if __name__ == '__main__':
     cert = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/fullchain.pem'
@@ -63,11 +97,11 @@ if __name__ == '__main__':
     wsgi_app = WSGIApp(socketio.server, app)
 
     # plain HTTP + WebSocket on 8080
-    def serve_plain():
-        print("[server] starting plain HTTP on :8080")
+    def serve_plain_http():
+        print("[server] starting plain HTTP + WebSocket on :8080")
         eventlet.wsgi.server(eventlet.listen(("0.0.0.0", 8080)), wsgi_app)
 
-    threading.Thread(target=serve_plain, daemon=True).start()
+    threading.Thread(target=serve_plain_http, daemon=True).start()
 
     # redirect on 80 (no websockets)
     def redirect_app(environ, start_response):
@@ -85,14 +119,27 @@ if __name__ == '__main__':
         daemon=True
     ).start()
 
-    # TLS on 443 using same WSGI app (wrap the listener)
-    if os.path.exists(cert) and os.path.exists(key):
-        print("[server] starting TLS on :443")
-        listener = eventlet.listen(("0.0.0.0", 443))
-        ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        ssl_ctx.load_cert_chain(certfile=cert, keyfile=key)
-        ssl_listener = eventlet.wrap_ssl(listener, ssl_ctx, server_side=True)
-        eventlet.wsgi.server(ssl_listener, wsgi_app)
+    # TLS on 443 using same WSGI app
+    cert_info = validate_cert_paths(cert, key)
+    print("[server] cert info:", cert_info)
+
+    if cert_info['cert']['isfile'] and cert_info['key']['isfile']:
+        try:
+            listener = eventlet.listen(("0.0.0.0", 443))
+            ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            ssl_ctx.load_cert_chain(certfile=cert, keyfile=key)
+            ssl_listener = eventlet.wrap_ssl(listener, ssl_ctx, server_side=True)
+            print("[server] starting TLS + WebSocket on :443")
+            # Serve TLS in foreground so process stays alive
+            eventlet.wsgi.server(ssl_listener, wsgi_app)
+        except Exception as e:
+            print("[server] failed to start TLS listener:", repr(e))
+            traceback.print_exc()
+            print("[server] falling back to plain HTTP on :8080 (already running)")
+            # keep running; plain server thread is already started
+            # block forever to keep process alive
+            eventlet.sleep()
     else:
-        # fallback: run plain server in foreground for testing
-        eventlet.wsgi.server(eventlet.listen(("0.0.0.0", 8080)), wsgi_app)
+        print("[server] cert or key not found or not regular files; running only plain HTTP on :8080")
+        # block forever to keep process alive (plain server thread is running)
+        eventlet.sleep()
