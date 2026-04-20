@@ -1,3 +1,82 @@
+import os
+import json
+import threading
+from flask import Flask, render_template, send_from_directory, jsonify
+from flask_socketio import SocketIO, emit
+import eventlet
+import eventlet.wsgi
+from socketio import WSGIApp
+import ssl
+
+# Early monkey patch for eventlet
+eventlet.monkey_patch()
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+GIFS_DIR = os.path.join(APP_DIR, 'gifs')
+COUNT_FILE = os.path.join(APP_DIR, 'count.json')
+
+app = Flask(__name__, template_folder='templates', static_folder='public')
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+lock = threading.Lock()
+
+def read_count():
+    if not os.path.exists(COUNT_FILE):
+        return 0
+    try:
+        with open(COUNT_FILE, 'r') as f:
+            return int(json.load(f).get('count', 0))
+    except:
+        return 0
+
+def write_count(n):
+    tmp = COUNT_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'count': n}, f)
+    os.replace(tmp, COUNT_FILE)
+
+def build_digit_gif_map():
+    mapping = {}
+    if not os.path.isdir(GIFS_DIR):
+        return mapping
+    for fn in sorted(os.listdir(GIFS_DIR)):
+        name = fn.lower()
+        if name and name[0].isdigit() and name.endswith(('.gif', '.png', '.jpg', '.jpeg', '.webp')):
+            mapping.setdefault(name[0], fn)
+    return mapping
+
+@app.route('/')
+def index():
+    count = read_count()
+    digit_map = build_digit_gif_map()
+    digits = list(str(count)) if count != 0 else ['0']
+    gifs = [digit_map[d] for d in digits if d in digit_map]
+    return render_template('index.html', count=count, gifs=gifs)
+
+@app.route('/gifs/<path:filename>')
+def serve_gif(filename):
+    return send_from_directory(GIFS_DIR, filename)
+
+@app.route('/api/gifs/<int:count>')
+def api_gifs(count):
+    digit_map = build_digit_gif_map()
+    digits = list(str(count)) if count != 0 else ['0']
+    gifs = [digit_map[d] for d in digits if d in digit_map]
+    return jsonify({'gifs': gifs})
+
+@app.route('/increment', methods=['POST'])
+def increment():
+    with lock:
+        n = read_count() + 1
+        write_count(n)
+
+    # Emit to all connected clients on the single Socket.IO server
+    socketio.emit('count_updated', {'count': n})
+    return ("", 204)
+
+@socketio.on('connect')
+def on_connect():
+    emit('count_updated', {'count': read_count()})
+
 if __name__ == '__main__':
     cert = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/fullchain.pem'
     key = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/privkey.pem'
