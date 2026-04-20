@@ -115,6 +115,14 @@ if __name__ == '__main__':
             keyfile=key
         )
 
+        socketio.run(
+            app,
+            host='0.0.0.0',
+            port=8080,
+            # certfile=cert,
+            # keyfile=key
+        )
+
         # --- Port 8000 
     else:
         socketio.run(app, host='0.0.0.0', port=8000)
