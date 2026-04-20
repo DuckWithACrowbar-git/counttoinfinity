@@ -136,10 +136,5 @@ if __name__ == '__main__':
             print("[server] failed to start TLS listener:", repr(e))
             traceback.print_exc()
             print("[server] falling back to plain HTTP on :8080 (already running)")
-            # keep running; plain server thread is already started
-            # block forever to keep process alive
-            eventlet.sleep()
     else:
         print("[server] cert or key not found or not regular files; running only plain HTTP on :8080")
-        # block forever to keep process alive (plain server thread is running)
-        eventlet.sleep()
