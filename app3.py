@@ -75,15 +75,19 @@ if __name__ == '__main__':
 
     import eventlet
     import eventlet.wsgi
+    from socketio import Middleware
 
-    # --- HTTP server on port 8080 (no redirect, full site) ---
-    def http_server():
+    # --- HTTP + WebSockets on port 8080 ---
+    def http_ws_server():
+        # Wrap Flask app so Socket.IO works through eventlet.wsgi
+        wsgi_app = Middleware(socketio, app)
+
         eventlet.wsgi.server(
             eventlet.listen(("0.0.0.0", 8080)),
-            app
+            wsgi_app
         )
 
-    threading.Thread(target=http_server, daemon=True).start()
+    threading.Thread(target=http_ws_server, daemon=True).start()
 
     # --- Optional HTTP redirect server on port 80 ---
     if os.path.exists(cert) and os.path.exists(key):
@@ -117,5 +121,5 @@ if __name__ == '__main__':
         )
 
     else:
-        # If no SSL, run normal HTTP on 8080 only
+        # If SSL missing, fall back to HTTP only
         socketio.run(app, host='0.0.0.0', port=8080)
