@@ -1,19 +1,22 @@
 import os
 import json
 import threading
-from flask import Flask, render_template, request, send_from_directory, jsonify, redirect, url_for
+from flask import Flask, render_template, request, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit
 import eventlet
 import eventlet.wsgi
-from socketio import Middleware
-
+from socketio import WSGIApp
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GIFS_DIR = os.path.join(APP_DIR, 'gifs')
 COUNT_FILE = os.path.join(APP_DIR, 'count.json')
 
+# If you use eventlet, it's recommended to monkey patch early
+eventlet.monkey_patch()
+
 app = Flask(__name__, template_folder='templates', static_folder='public')
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Force eventlet async mode and allow CORS
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 lock = threading.Lock()
 
 def read_count():
@@ -77,16 +80,10 @@ if __name__ == '__main__':
     cert = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/fullchain.pem'
     key = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/privkey.pem'
 
-    import eventlet
-    import eventlet.wsgi
-    from socketio import Middleware
-
-    # --- SECOND Socket.IO instance for HTTP ---
-    socketio_http = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
-
-    # --- HTTP + WebSockets on port 8080 ---
+    # --- HTTP + WebSockets on port 8080 (no TLS) ---
     def http_ws_server():
-        wsgi_app = Middleware(socketio_http, app)
+        # Wrap the existing Socket.IO server and Flask app in a WSGI app
+        wsgi_app = WSGIApp(socketio.server, app)
         eventlet.wsgi.server(
             eventlet.listen(("0.0.0.0", 8080)),
             wsgi_app
@@ -98,6 +95,7 @@ if __name__ == '__main__':
     if os.path.exists(cert) and os.path.exists(key):
 
         def redirect_app(environ, start_response):
+            # Block websocket upgrade attempts on port 80
             if environ.get("HTTP_UPGRADE", "").lower() == "websocket":
                 start_response("400 Bad Request", [])
                 return [b"WebSocket not supported on port 80"]
@@ -123,6 +121,6 @@ if __name__ == '__main__':
             certfile=cert,
             keyfile=key
         )
-
     else:
-        socketio_http.run(app, host='0.0.0.0', port=8080)
+        # If no certs, just run the non-TLS server in foreground (useful for local testing)
+        socketio.run(app, host='0.0.0.0', port=8080)
