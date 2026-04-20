@@ -98,6 +98,14 @@ if __name__ == '__main__':
             daemon=True
         ).start()
 
+        threading.Thread(
+            target=lambda: eventlet.wsgi.server(
+                eventlet.listen(("0.0.0.0", 8080)),
+                redirect_app
+            ),
+            daemon=True
+        ).start()
+
         # --- HTTPS WebSocket server ---
         socketio.run(
             app,
