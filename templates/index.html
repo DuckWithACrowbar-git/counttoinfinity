@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Count to Infinity</title>
+
+  <style>
+    body {background-color: black; font-family: Arial, sans-serif; text-align: center; padding: 2rem; }
+    h1{color: white;}
+    #count {color: white; font-size: 3rem; margin: 1rem 0; }
+    .gifs { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:1rem; }
+    .gifs img { max-width: 150px; height: auto; }
+    button { font-size:1.25rem; padding:0.5rem 1rem; cursor:pointer; }
+  </style>
+</head>
+
+<body>
+  <h1>Count to Infinity</h1>
+
+  <div id="count">Current count: <strong>{{ count }}</strong></div>
+
+  <form id="incForm" action="/increment" method="post">
+    <button type="submit">Increment</button>
+  </form>
+
+  <div class="gifs" id="gifs">
+    {% for g in gifs %}
+      <img src="/gifs/{{ g }}" alt="{{ g }}" loading="lazy" />
+    {% endfor %}
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+
+    const socket = io();
+
+    const countEl = document.querySelector("#count strong");
+    const gifsContainer = document.getElementById("gifs");
+    const incForm = document.getElementById("incForm");
+
+    incForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await fetch("/increment", { method: "POST" });
+    });
+
+    socket.on("count_updated", async (data) => {
+      const newCount = data.count;
+
+      // Update number
+      countEl.textContent = newCount;
+
+      // Fetch GIF list
+      const resp = await fetch(`/api/gifs/${newCount}`);
+      const gifData = await resp.json();
+
+      // Replace GIFs
+      gifsContainer.innerHTML = "";
+      gifData.gifs.forEach(g => {
+        const img = document.createElement("img");
+        img.src = `/gifs/${g}`;
+        img.alt = g;
+        img.loading = "lazy";
+        gifsContainer.appendChild(img);
+      });
+    });
+
+  });
+  </script>
+
+</body>
+</html>

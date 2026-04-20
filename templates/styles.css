@@ -1,0 +1,46 @@
+.gif-sequence{
+    display: flex;
+    justify-content: center;
+    place-items: center;
+}
+
+.btn{
+    opacity: 1;
+    margin: auto;
+    margin-top: 100px;
+    display: flex;
+    justify-content: center;
+    place-items: center;
+    transform: scale(1.75);
+    border-radius: 10px;
+}
+
+.btn:hover{
+    animation-name: btn_hover;
+    animation-duration: 0.1s;
+    animation-delay: 0;
+    animation-fill-mode: forwards;
+}
+
+.btn:not(:hover){
+    animation-name: btn_not_hover;
+    animation-duration: 0.1s;
+    animation-delay: 0;
+    animation-fill-mode: forwards;
+}
+
+p{
+    padding-top: 20px;
+    position: fixed;
+    backface-visibility: hidden;
+}
+
+@keyframes btn_hover {
+    0%{}
+    100%{border: 5px solid rgb(0, 153, 255);}
+}
+
+@keyframes btn_not_hover {
+    0%{border: 5px solid rgb(0, 153, 255);}
+    100%{}
+}
