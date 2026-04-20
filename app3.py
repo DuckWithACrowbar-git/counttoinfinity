@@ -3,6 +3,10 @@ import json
 import threading
 from flask import Flask, render_template, request, send_from_directory, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
+import eventlet
+import eventlet.wsgi
+from socketio import Middleware
+
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GIFS_DIR = os.path.join(APP_DIR, 'gifs')
@@ -73,10 +77,6 @@ if __name__ == '__main__':
     cert = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/fullchain.pem'
     key = '/etc/letsencrypt/live/counttoinfinity.duckdns.org/privkey.pem'
 
-    import eventlet
-    import eventlet.wsgi
-    from socketio import Middleware
-
     # --- HTTP + WebSockets on port 8080 ---
     def http_ws_server():
         # Wrap Flask app so Socket.IO works through eventlet.wsgi
@@ -116,6 +116,14 @@ if __name__ == '__main__':
             app,
             host='0.0.0.0',
             port=443,
+            certfile=cert,
+            keyfile=key
+        )
+
+        socketio.run(
+            app,
+            host='0.0.0.0',
+            port=8080,
             certfile=cert,
             keyfile=key
         )
