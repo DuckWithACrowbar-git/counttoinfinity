@@ -30,26 +30,45 @@
     {% endfor %}
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-<script>
-  // If page is served from :8080, this connects to same origin.
-  const socket = io({
-    transports: ['websocket'],
-    upgrade: true
-  });
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
-  socket.on('connect', () => {
-    console.log('socket connected', socket.id);
-  });
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
 
-  socket.on('count_updated', (data) => {
-    console.log('count_updated', data);
-    // update DOM with data.count
-  });
+    const socket = io();
 
-  socket.on('disconnect', () => {
-    console.log('socket disconnected');
+    const countEl = document.querySelector("#count strong");
+    const gifsContainer = document.getElementById("gifs");
+    const incForm = document.getElementById("incForm");
+
+    incForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await fetch("/increment", { method: "POST" });
+    });
+
+    socket.on("count_updated", async (data) => {
+      const newCount = data.count;
+
+      // Update number
+      countEl.textContent = newCount;
+
+      // Fetch GIF list
+      const resp = await fetch(`/api/gifs/${newCount}`);
+      const gifData = await resp.json();
+
+      // Replace GIFs
+      gifsContainer.innerHTML = "";
+      gifData.gifs.forEach(g => {
+        const img = document.createElement("img");
+        img.src = `/gifs/${g}`;
+        img.alt = g;
+        img.loading = "lazy";
+        gifsContainer.appendChild(img);
+      });
+    });
+
   });
-</script>
+  </script>
+
 </body>
 </html>
